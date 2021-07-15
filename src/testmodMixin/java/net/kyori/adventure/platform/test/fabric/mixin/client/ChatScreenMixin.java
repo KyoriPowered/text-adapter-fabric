@@ -66,7 +66,7 @@ public abstract class ChatScreenMixin extends Screen {
 
       x += widget.getWidth() + Widgets.IN_GROUP_SPACING;
 
-      this.addButton(widget);
+      this.addRenderableWidget(widget);
     }
   }
 }

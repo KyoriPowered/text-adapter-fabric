@@ -32,8 +32,6 @@ import net.kyori.adventure.audience.ForwardingAudience;
 import net.kyori.adventure.platform.fabric.FabricServerAudiences;
 import net.kyori.adventure.platform.fabric.PlayerLocales;
 import net.kyori.adventure.platform.fabric.impl.LocaleHolderBridge;
-import net.kyori.adventure.platform.fabric.impl.accessor.ClientboundTabListPacketAccess;
-import net.kyori.adventure.platform.fabric.impl.accessor.ServerboundClientInformationPacketAccess;
 import net.kyori.adventure.platform.fabric.impl.server.FabricServerAudiencesImpl;
 import net.kyori.adventure.platform.fabric.impl.server.RenderableAudience;
 import net.kyori.adventure.platform.fabric.impl.server.ServerPlayerAudience;
@@ -110,9 +108,10 @@ public abstract class ServerPlayerMixin extends PlayerMixin implements Forwardin
     if (footer != null) {
       this.adventure$tabListFooter = footer;
     }
-    final ClientboundTabListPacket packet = new ClientboundTabListPacket();
-    ((ClientboundTabListPacketAccess) packet).setHeader(this.adventure$tabListHeader);
-    ((ClientboundTabListPacketAccess) packet).setFooter(this.adventure$tabListFooter);
+    final ClientboundTabListPacket packet = new ClientboundTabListPacket(
+      this.adventure$tabListHeader,
+      this.adventure$tabListFooter
+    );
 
     this.connection.send(packet);
   }
@@ -122,7 +121,7 @@ public abstract class ServerPlayerMixin extends PlayerMixin implements Forwardin
 
   @Inject(method = "updateOptions", at = @At("HEAD"))
   private void adventure$handleLocaleUpdate(final ServerboundClientInformationPacket information, final CallbackInfo ci) {
-    final String language = ((ServerboundClientInformationPacketAccess) information).getLanguage();
+    final String language = information.getLanguage();
     final @Nullable Locale locale = LocaleHolderBridge.toLocale(language);
     if (!Objects.equals(this.adventure$locale, locale)) {
       this.adventure$locale = locale;

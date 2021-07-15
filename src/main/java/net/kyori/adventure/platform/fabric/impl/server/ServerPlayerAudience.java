@@ -47,10 +47,13 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.network.chat.ChatType;
 import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ClientboundChatPacket;
+import net.minecraft.network.protocol.game.ClientboundClearTitlesPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
 import net.minecraft.network.protocol.game.ClientboundCustomSoundPacket;
-import net.minecraft.network.protocol.game.ClientboundSetTitlesPacket;
+import net.minecraft.network.protocol.game.ClientboundSetActionBarTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
 import net.minecraft.network.protocol.game.ClientboundSoundEntityPacket;
 import net.minecraft.network.protocol.game.ClientboundStopSoundPacket;
 import net.minecraft.server.level.ServerPlayer;
@@ -60,6 +63,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.WrittenBookItem;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -88,12 +92,12 @@ public final class ServerPlayerAudience implements Audience {
       mcType = ChatType.SYSTEM;
     }
 
-    this.sendPacket(new ClientboundChatPacket(this.controller.toNative(text), mcType, source.uuid()));
+    this.player.sendMessage(this.controller.toNative(text), mcType, source.uuid());
   }
 
   @Override
   public void sendActionBar(final @NotNull Component message) {
-    this.sendPacket(new ClientboundSetTitlesPacket(ClientboundSetTitlesPacket.Type.ACTIONBAR, this.controller.toNative(message)));
+    this.sendPacket(new ClientboundSetActionBarTextPacket(this.controller.toNative(message)));
   }
 
   @Override
@@ -155,28 +159,38 @@ public final class ServerPlayerAudience implements Audience {
     this.sendPacket(new ClientboundStopSoundPacket(sound == null ? null : FabricAudiences.toNative(sound), cat));
   }
 
-  static final String BOOK_TITLE = "title";
-  static final String BOOK_AUTHOR = "author";
-  static final String BOOK_PAGES = "pages";
-  static final String BOOK_RESOLVED = "resolved";
-
   @Override
   public void openBook(final @NotNull Book book) {
     final ItemStack bookStack = new ItemStack(Items.WRITTEN_BOOK, 1);
     final CompoundTag bookTag = bookStack.getOrCreateTag();
-    bookTag.putString(BOOK_TITLE, this.adventure$plain(book.title()));
-    bookTag.putString(BOOK_AUTHOR, this.adventure$plain(book.author()));
+    bookTag.putString(WrittenBookItem.TAG_TITLE, validateField(this.adventure$plain(book.title()), WrittenBookItem.TITLE_MAX_LENGTH, WrittenBookItem.TAG_TITLE));
+    bookTag.putString(WrittenBookItem.TAG_AUTHOR, this.adventure$plain(book.author()));
     final ListTag pages = new ListTag();
-    for (final Component page : book.pages()) {
-      pages.add(StringTag.valueOf(this.adventure$serialize(page)));
+    if (book.pages().size() > WrittenBookItem.MAX_PAGES) {
+      throw new IllegalArgumentException("Book provided had " + book.pages().size() + " pages, but is only allowed a maximum of " + WrittenBookItem.MAX_PAGES);
     }
-    bookTag.put(BOOK_PAGES, pages);
-    bookTag.putBoolean(BOOK_RESOLVED, true); // todo: any parseable texts?
+    for (final Component page : book.pages()) {
+      pages.add(StringTag.valueOf(validateField(this.adventure$serialize(page), WrittenBookItem.PAGE_LENGTH, "page")));
+    }
+    bookTag.put(WrittenBookItem.TAG_PAGES, pages);
+    bookTag.putBoolean(WrittenBookItem.TAG_RESOLVED, true); // todo: any parseable texts?
 
-    final ItemStack previous = this.player.inventory.getSelected();
-    this.sendPacket(new ClientboundContainerSetSlotPacket(-2, this.player.inventory.selected, bookStack));
+    final ItemStack previous = this.player.getInventory().getSelected();
+    this.sendPacket(new ClientboundContainerSetSlotPacket(-2, this.player.containerMenu.getStateId(), this.player.getInventory().selected, bookStack));
     this.player.openItemGui(bookStack, InteractionHand.MAIN_HAND);
-    this.sendPacket(new ClientboundContainerSetSlotPacket(-2, this.player.inventory.selected, previous));
+    this.sendPacket(new ClientboundContainerSetSlotPacket(-2, this.player.containerMenu.getStateId(), this.player.getInventory().selected, previous));
+  }
+
+  private static String validateField(final String content, final int length, final String name) {
+    if (content == null) {
+      return content;
+    }
+
+    final int actual = content.length();
+    if (actual > length) {
+      throw new IllegalArgumentException("Field '" + name + "' has a maximum length of " + length + " but was passed '" + content + "', which was " + actual + " characters long.");
+    }
+    return content;
   }
 
   private String adventure$plain(final @NotNull Component component) {
@@ -192,7 +206,7 @@ public final class ServerPlayerAudience implements Audience {
   @Override
   public void showTitle(final @NotNull Title title) {
     if (title.subtitle() != Component.empty()) {
-      this.sendPacket(new ClientboundSetTitlesPacket(ClientboundSetTitlesPacket.Type.SUBTITLE, this.controller.toNative(title.subtitle())));
+      this.sendPacket(new ClientboundSetSubtitleTextPacket(this.controller.toNative(title.subtitle())));
     }
 
     final Title.@Nullable Times times = title.times();
@@ -201,12 +215,12 @@ public final class ServerPlayerAudience implements Audience {
       final int fadeOut = ticks(times.fadeOut());
       final int dwell = ticks(times.stay());
       if (fadeIn != -1 || fadeOut != -1 || dwell != -1) {
-        this.sendPacket(new ClientboundSetTitlesPacket(fadeIn, dwell, fadeOut));
+        this.sendPacket(new ClientboundSetTitlesAnimationPacket(fadeIn, dwell, fadeOut));
       }
     }
 
     if (title.title() != Component.empty()) {
-      this.sendPacket(new ClientboundSetTitlesPacket(ClientboundSetTitlesPacket.Type.TITLE, this.controller.toNative(title.title())));
+      this.sendPacket(new ClientboundSetTitleTextPacket(this.controller.toNative(title.title())));
     }
   }
 
@@ -216,12 +230,12 @@ public final class ServerPlayerAudience implements Audience {
 
   @Override
   public void clearTitle() {
-    this.sendPacket(new ClientboundSetTitlesPacket(ClientboundSetTitlesPacket.Type.CLEAR, null));
+    this.sendPacket(new ClientboundClearTitlesPacket(false));
   }
 
   @Override
   public void resetTitle() {
-    this.sendPacket(new ClientboundSetTitlesPacket(ClientboundSetTitlesPacket.Type.RESET, null));
+    this.sendPacket(new ClientboundClearTitlesPacket(true));
   }
 
   @Override

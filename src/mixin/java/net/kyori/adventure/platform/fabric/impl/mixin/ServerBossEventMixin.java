@@ -55,9 +55,8 @@ public abstract class ServerBossEventMixin extends BossEvent implements ServerBo
 
   public ServerBossEventMixin(final UUID uuid, final Component name, final BossBarColor color, final BossBarOverlay style) {
     super(uuid, name, color, style);
-    this.adventure$lastSentPercent = this.percent;
+    this.adventure$lastSentPercent = this.progress;
   }
-
 
   // If a player has respawned, we still want to be able to remove the player using old references to their entity
   @Redirect(method = "removePlayer", at = @At(value = "INVOKE", target = "Ljava/util/Set;remove(Ljava/lang/Object;)Z"))
@@ -81,7 +80,7 @@ public abstract class ServerBossEventMixin extends BossEvent implements ServerBo
 
   @Override
   public void adventure$addAll(final Collection<ServerPlayer> players) {
-    final ClientboundBossEventPacket pkt = new ClientboundBossEventPacket(ClientboundBossEventPacket.Operation.ADD, this);
+    final ClientboundBossEventPacket pkt = ClientboundBossEventPacket.createAddPacket(this);
     for (final ServerPlayer player : players) {
       if (this.players.add(player) && this.shadow$isVisible()) {
         player.connection.send(pkt);
@@ -91,7 +90,7 @@ public abstract class ServerBossEventMixin extends BossEvent implements ServerBo
 
   @Override
   public void adventure$removeAll(final Collection<ServerPlayer> players) {
-    final ClientboundBossEventPacket pkt = new ClientboundBossEventPacket(ClientboundBossEventPacket.Operation.REMOVE, this);
+    final ClientboundBossEventPacket pkt = ClientboundBossEventPacket.createRemovePacket(this.getId());
     for (final ServerPlayer player : players) {
       if (this.players.remove(player) && this.shadow$isVisible()) {
         player.connection.send(pkt);
@@ -108,10 +107,10 @@ public abstract class ServerBossEventMixin extends BossEvent implements ServerBo
 
   // Optimization -- don't send a packet for tiny changes
 
-  @Inject(method = "setPercent", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/BossEvent;setPercent(F)V"), cancellable = true, require = 0)
+  @Inject(method = "setProgress", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/BossEvent;setProgress(F)V"), cancellable = true, require = 0)
   private void adventure$onlySetPercentIfBigEnough(final float newPercent, final CallbackInfo ci) {
     if (Math.abs(newPercent - this.adventure$lastSentPercent) < MINIMUM_PERCENT_CHANGE) {
-      this.percent = newPercent;
+      this.progress = newPercent;
       ci.cancel();
     } else {
       this.adventure$lastSentPercent = newPercent;

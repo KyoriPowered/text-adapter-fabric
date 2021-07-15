@@ -31,7 +31,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -77,6 +76,7 @@ import net.kyori.adventure.translation.TranslationRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.commands.synchronization.SuggestionProviders;
 import net.minecraft.network.chat.TextComponent;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -124,11 +124,15 @@ public class AdventureTester implements ModInitializer {
     return requireNonNull(this.platform, "Tried to access Fabric platform without a running server");
   }
 
+  public void serverStarted(final MinecraftServer server) {
+    this.platform = FabricServerAudiences.of(server);
+  }
+
   @Override
   public void onInitialize() {
     // Register localizations
     final TranslationRegistry testmodRegistry = TranslationRegistry.create(key("adventure", "testmod_localizations"));
-    for (final Locale lang : Arrays.asList(Locale.ENGLISH, Locale.GERMAN)) {
+    for (final var lang : List.of(Locale.ENGLISH, Locale.GERMAN)) {
       testmodRegistry.registerAll(lang, ResourceBundle.getBundle("net.kyori.adventure.platform.test.fabric.messages", lang), false);
     }
     GlobalTranslator.get().addSource(testmodRegistry);
